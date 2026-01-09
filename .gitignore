@@ -1,0 +1,11 @@
+# IDE files
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.webm
+recording_*.webm
