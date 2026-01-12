@@ -1,23 +1,16 @@
-/**
- * Spyder Live Stream Downloader - Background Script
- * Author: Satnam Singh Laloda
- */
 
-// Background script for Spyder Live Stream Downloader
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Spyder Live Stream Downloader installed.");
-  // Initialize storage
-  chrome.storage.local.set({
-    recordingState: {
-        state: "inactive",
-        startTime: 0,
-        pausedDuration: 0,
-        lastPauseTime: 0
-    }
-  });
+    console.log("Ullu Live Stream And Video Recorder installed.");
+    chrome.storage.local.set({
+        recordingState: {
+            state: "inactive",
+            startTime: 0,
+            pausedDuration: 0,
+            lastPauseTime: 0
+        }
+    });
 });
 
-// Clear state if the tab where recording might have been happening is closed
 chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     chrome.storage.local.get(['recordingState'], (result) => {
         if (result.recordingState && result.recordingState.tabId === tabId) {

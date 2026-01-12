@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Live Stream Downloader",
+  "name": "Ullu Live Stream And Video Recorder",
   "version": "1.0",
   "author": "Satnam Singh Laloda",
   "description": "Record your screen and tabs easily.",
@@ -15,20 +15,24 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_icon": "icons/icon128.svg"
+    "default_icon": "icons/icon128.png"
   },
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ]
     }
   ],
   "icons": {
-    "16": "icons/icon16.svg",
-    "48": "icons/icon48.svg",
-    "128": "icons/icon128.svg"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
 }

@@ -1,7 +1,3 @@
-/**
- * Spyder Live Stream Downloader - Popup Script
- * Author: Satnam Singh Laloda
- */
 
 let timerInterval;
 let startTime;
@@ -13,22 +9,83 @@ const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const resumeBtn = document.getElementById('resumeBtn');
-const pipBtn = document.getElementById('pipBtn');
-const timerDisplay = document.getElementById('timer');
 
 const videoSourcesSelect = document.getElementById('videoSources');
-const sourceSelector = document.getElementById('sourceSelector');
+const urlInput = document.getElementById('videoUrlInput');
 const libraryList = document.getElementById('libraryList');
 const recCount = document.getElementById('recCount');
 const clearLibraryBtn = document.getElementById('clearLibrary');
 const statusText = document.getElementById('statusText');
-const timerCard = document.getElementById('timerCard');
 const donateBtn = document.getElementById('donateBtn');
+const owlLogo = document.getElementById('owlLogo');
+const owlStatus = document.getElementById('owlStatus');
+const librarySection = document.getElementById('librarySection');
+const owlImage = document.getElementById('owlImage');
+const owlEyelids = document.getElementById('owlEyelids');
+const ringTimer = document.getElementById('ringTimer');
+const owlLogoContainer = document.querySelector('.owl-logo-container');
+const sourceSelector = document.getElementById('sourceSelector'); // New: explicit selector
+let pollingInterval; // New: for source detection polling
+
+
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+const closeSettings = document.getElementById('closeSettings');
+const settingQuality = document.getElementById('settingQuality');
+const settingAutoResume = document.getElementById('settingAutoResume');
+const saveNote = document.getElementById('saveNote');
+
+
+settingsBtn.addEventListener('click', () => {
+    settingsPanel.classList.add('active');
+    loadSettings();
+});
+
+closeSettings.addEventListener('click', () => {
+    settingsPanel.classList.remove('active');
+});
+
+
+function loadSettings() {
+    chrome.storage.local.get(['appSettings'], (result) => {
+        const settings = result.appSettings || {
+            quality: "best",
+            autoResume: true
+        };
+        settingQuality.value = settings.quality || "best";
+        settingAutoResume.checked = settings.autoResume !== false;
+
+        updateQualityDropdownUI(settingQuality.value);
+    });
+}
+
+function showSaveNote() {
+    if (!saveNote) return;
+    saveNote.style.opacity = '1';
+    setTimeout(() => {
+        saveNote.style.opacity = '0';
+    }, 2000);
+}
+
+
+[settingQuality, settingAutoResume].forEach(el => {
+    if (!el) return;
+    el.addEventListener('change', () => {
+        const settings = {
+            quality: settingQuality.value,
+            autoResume: settingAutoResume.checked
+        };
+        chrome.storage.local.set({ appSettings: settings }, showSaveNote);
+    });
+});
+
+
+loadSettings();
 
 function updateTimer() {
     const now = Date.now();
     let diff = 0;
-    
+
     if (startTime) {
         if (isPaused) {
             diff = (lastPauseTime || now) - startTime - pausedDuration;
@@ -43,8 +100,8 @@ function updateTimer() {
     const minutes = Math.floor((diff % 3600000) / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
 
-    timerDisplay.innerText = 
-        `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    const formatted = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    if (ringTimer) ringTimer.innerText = formatted;
 }
 
 function startTimer(extStartTime, extPausedDuration, extIsPaused, extLastPauseTime) {
@@ -52,14 +109,13 @@ function startTimer(extStartTime, extPausedDuration, extIsPaused, extLastPauseTi
     pausedDuration = extPausedDuration || 0;
     isPaused = extIsPaused || false;
     lastPauseTime = extLastPauseTime || 0;
-    
+
     if (timerInterval) clearInterval(timerInterval);
     if (startTime && startTime > 0) {
         timerInterval = setInterval(updateTimer, 1000);
-        if (!isPaused) timerCard.classList.add('recording');
         updateTimer();
     } else {
-        timerDisplay.innerText = "00:00:00";
+        if (ringTimer) ringTimer.innerText = "00:00:00";
     }
 }
 
@@ -69,35 +125,57 @@ function stopTimer() {
     pausedDuration = 0;
     isPaused = false;
     lastPauseTime = 0;
-    timerDisplay.innerText = "00:00:00";
-    timerCard.classList.remove('recording');
+    if (ringTimer) ringTimer.innerText = "00:00:00";
 }
 
 startBtn.addEventListener('click', () => {
     const sourceIndex = videoSourcesSelect.value;
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "start", sourceIndex: sourceIndex}, function(response) {
-            if (response && response.status === "started") {
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                pauseBtn.style.display = "flex";
-                pipBtn.style.display = "flex";
-                sourceSelector.style.display = "none"; // Hide selector during recording
-                statusText.innerText = "Recording";
-                startTimer(response.startTime, 0, false, 0);
-            } else if (response && response.status === "error") {
-                statusText.innerText = "Error";
-                setTimeout(() => {
-                    statusText.innerText = "Ready";
-                }, 3000);
-            }
+    if (sourceIndex === "" || sourceIndex === undefined) {
+        statusText.innerText = "Please select a source";
+        return;
+    }
+
+    chrome.storage.local.get(['appSettings'], async (settingsResult) => {
+        const settings = settingsResult.appSettings || {
+            quality: "5000000",
+            autoResume: true
+        };
+
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+                action: "start",
+                sourceIndex: sourceIndex,
+                videoTitle: videoSourcesSelect.options[videoSourcesSelect.selectedIndex]?.text || "Video",
+                settings: settings
+            }, function (response) {
+                if (response && response.status === "started") {
+                    startBtn.disabled = true;
+                    startBtn.style.display = "none";
+                    stopBtn.disabled = false;
+                    stopBtn.style.display = "flex";
+                    pauseBtn.style.display = "flex";
+                    sourceSelector.style.display = "none";
+                    statusText.innerText = "";
+                    owlStatus.innerText = "Ullu is recording...";
+                    if (owlImage) owlImage.style.display = "none";
+                    if (owlEyelids) owlEyelids.style.display = "none";
+                    if (ringTimer) ringTimer.style.display = "block";
+                    if (owlLogoContainer) owlLogoContainer.classList.add('recording');
+                    startTimer(response.startTime, 0, false, 0);
+                } else if (response && response.status === "error") {
+                    statusText.innerText = "Error";
+                    setTimeout(() => {
+                        statusText.innerText = "";
+                    }, 3000);
+                }
+            });
         });
     });
 });
 
 stopBtn.addEventListener('click', () => {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "stop"}, function(response) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: "stop" }, function (response) {
             if (response && response.status === "stopped") {
                 resetUI();
                 statusText.innerText = "Saved";
@@ -107,15 +185,14 @@ stopBtn.addEventListener('click', () => {
 });
 
 pauseBtn.addEventListener('click', () => {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "pause"}, function(response) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: "pause" }, function (response) {
             if (response && response.status === "paused") {
                 isPaused = true;
                 lastPauseTime = Date.now();
                 pauseBtn.style.display = "none";
                 resumeBtn.style.display = "flex";
-                statusText.innerText = "Paused";
-                timerCard.classList.remove('recording');
+                statusText.innerText = "";
                 updateTimer();
             }
         });
@@ -123,8 +200,8 @@ pauseBtn.addEventListener('click', () => {
 });
 
 resumeBtn.addEventListener('click', () => {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "resume"}, function(response) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: "resume" }, function (response) {
             if (response && response.status === "resumed") {
                 isPaused = false;
                 if (lastPauseTime > 0) {
@@ -133,46 +210,59 @@ resumeBtn.addEventListener('click', () => {
                 }
                 pauseBtn.style.display = "flex";
                 resumeBtn.style.display = "none";
-                statusText.innerText = "Recording";
-                timerCard.classList.add('recording');
+                statusText.innerText = "";
                 updateTimer();
             }
         });
     });
 });
 
-pipBtn.addEventListener('click', () => {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "togglePip"}, function(response) {
-            if (response && response.status === "pip_toggled") {
-                console.log("PiP toggled");
-            }
-        });
-    });
-});
-
 donateBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=satnamtoor12@gmail.com&item_name=Support%20Spyder%20Live%20Stream%20Downloader%20Project&currency_code=USD' });
+    chrome.tabs.create({ url: 'https://www.paypal.com/cgi-bin/webscr?cmd=_xclick&business=satnamtoor12@gmail.com&item_name=Support%20Ullu%20Live%20Stream%20And%20Video%20Recorder&currency_code=USD' });
 });
 
 clearLibraryBtn.addEventListener('click', () => {
     if (confirm("Are you sure you want to clear all recording history from this list? (Files will remain on your computer)")) {
-        chrome.downloads.erase({filenameRegex: 'recording_.*\\.webm'}, () => {
+        chrome.downloads.erase({ filenameRegex: 'recording_.*\\.webm' }, () => {
             loadLibrary();
         });
     }
 });
 
 function resetUI() {
-    startBtn.disabled = true; // Will be enabled by loadSources if video exists
+    isPaused = false;
+    startTime = null;
+    pausedDuration = 0;
+    lastPauseTime = 0;
+
+    startBtn.disabled = true;
+    startBtn.style.display = "none";
     stopBtn.disabled = true;
+    stopBtn.style.display = "none";
     pauseBtn.style.display = "none";
     resumeBtn.style.display = "none";
+
     stopTimer();
-    loadLibrary(); // Refresh library after saving
-    loadSources(); // This will update status to Ready if video found
-    
-    // Also update storage state
+    loadLibrary();
+    loadSources();
+
+    if (owlStatus) owlStatus.innerText = "Ullu is waiting";
+    if (owlImage) owlImage.style.display = "block";
+    if (owlEyelids) owlEyelids.style.display = "flex";
+    if (ringTimer) {
+        ringTimer.style.display = "none";
+        ringTimer.innerText = "00:00:00";
+    }
+    if (owlLogoContainer) {
+        owlLogoContainer.classList.remove('recording');
+        owlLogoContainer.classList.remove('paused');
+    }
+    if (urlInput) {
+        urlInput.parentElement.style.display = "block";
+    }
+    if (statusText) statusText.innerText = "";
+    if (sourceSelector) sourceSelector.style.display = "none";
+
     chrome.runtime.sendMessage({
         action: "updateState",
         state: {
@@ -191,80 +281,169 @@ async function loadLibrary() {
         filenameRegex: 'recording_.*\\.webm'
     }, (items) => {
         if (!items || items.length === 0) {
-            libraryList.innerHTML = '<div style="text-align: center; padding: 20px; font-size: 12px; color: var(--text-muted);">No recordings yet</div>';
+            libraryList.innerHTML = '<div class="empty-state">No recordings found</div>';
             recCount.innerText = "0";
             return;
         }
 
         recCount.innerText = items.length;
         libraryList.innerHTML = '';
-        
-        items.forEach(item => {
-            const date = new Date(item.startTime).toLocaleString();
+
+        items.forEach((item, index) => {
+            const date = new Date(item.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
             const filename = item.filename ? item.filename.split('\\').pop().split('/').pop() : `recording_${item.id}.webm`;
-            const size = item.fileSize ? (item.fileSize / 1024 / 1024).toFixed(2) + ' MB' : 'Size unknown';
-            
+            const size = item.fileSize ? (item.fileSize / 1024 / 1024).toFixed(1) + ' MB' : 'Size unknown';
+
             const itemEl = document.createElement('div');
             itemEl.className = 'recording-item';
+            itemEl.style.animation = `fadeIn 0.3s ease forwards ${index * 0.05}s`;
+            itemEl.style.opacity = '0';
+
             itemEl.innerHTML = `
                 <div class="rec-info">
-                    <div class="rec-name">${filename}</div>
-                    <div class="rec-date">${date} • ${size}</div>
+                    <div class="rec-name" title="${filename}">${filename}</div>
+                    <div class="rec-meta">
+                        <span>${date}</span>
+                        <span style="opacity: 0.5">•</span>
+                        <span>${size}</span>
+                    </div>
                 </div>
                 <div class="rec-actions">
                     <button class="rec-btn download-rec" data-id="${item.id}" title="Show in folder">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     </button>
                     <button class="rec-btn delete-rec" data-id="${item.id}" title="Remove from list">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>
                 </div>
             `;
-            
+
             itemEl.querySelector('.download-rec').addEventListener('click', () => {
                 chrome.downloads.show(item.id);
             });
 
             itemEl.querySelector('.delete-rec').addEventListener('click', () => {
-                chrome.downloads.erase({id: item.id}, () => {
+                chrome.downloads.erase({ id: item.id }, () => {
                     loadLibrary();
                 });
             });
-            
+
             libraryList.appendChild(itemEl);
         });
     });
 }
 
+
+if (urlInput) {
+    urlInput.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        urlInput.classList.add('pulse-selection');
+    });
+
+    urlInput.addEventListener('dragleave', () => {
+        urlInput.classList.remove('pulse-selection');
+    });
+
+    urlInput.addEventListener('dblclick', function () {
+        this.select();
+    });
+
+    urlInput.addEventListener('drop', (e) => {
+        e.preventDefault();
+        urlInput.classList.remove('pulse-selection');
+        const url = e.dataTransfer.getData('text').trim();
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+            urlInput.value = url;
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.update(tabs[0].id, { url: url });
+                }
+            });
+        }
+    });
+
+    urlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            let url = urlInput.value.trim();
+            if (url) {
+                if (!url.startsWith('http')) url = 'https://' + url;
+                statusText.innerText = "Opening URL...";
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (tabs[0]) {
+                        chrome.tabs.update(tabs[0].id, { url: url }, () => {
+                            // Immediate check and start polling
+                            setTimeout(loadSources, 1500);
+                        });
+                    }
+                });
+            }
+        }
+    });
+
+    urlInput.addEventListener('blur', () => {
+        let url = urlInput.value.trim();
+        if (url) {
+            if (!url.startsWith('http')) url = 'https://' + url;
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.update(tabs[0].id, { url: url });
+                }
+            });
+        }
+    });
+}
+
 function loadSources() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         if (tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, {action: "getSources"}, function(response) {
+            // Only update input if we aren't currently typing or if it's empty
+            if (urlInput && tabs[0].url && document.activeElement !== urlInput) {
+                if (tabs[0].url.startsWith('chrome://') || tabs[0].url.startsWith('edge://') || tabs[0].url.startsWith('about:')) {
+                    if (urlInput.value !== "") urlInput.value = "";
+                } else {
+                    urlInput.value = tabs[0].url;
+                }
+            }
+
+            chrome.tabs.sendMessage(tabs[0].id, { action: "getSources" }, function (response) {
                 if (chrome.runtime.lastError) {
-                    statusText.innerText = "Open a video page";
-                    startBtn.disabled = true;
-                    sourceSelector.style.display = "none";
+                    // Script might not be loaded yet if page just refreshed
+                    if (!startTime && statusText.innerText !== "Opening URL...") {
+                        statusText.innerText = "Waiting for page...";
+                    }
+                    startBtn.style.display = "none";
+                    if (sourceSelector) sourceSelector.style.display = "none";
                     return;
                 }
+
                 if (response && response.sources && response.sources.length > 0) {
-                    sourceSelector.style.display = "block";
+                    const bestSource = response.sources[0];
                     videoSourcesSelect.innerHTML = '';
                     response.sources.forEach(source => {
                         const option = document.createElement('option');
                         option.value = source.index;
-                        option.textContent = `${source.id} (${source.label})`;
+                        option.textContent = source.name;
                         videoSourcesSelect.appendChild(option);
                     });
-                    
-                    if (statusText.innerText !== "Recording" && statusText.innerText !== "Paused" && statusText.innerText !== "Saved") {
-                        statusText.innerText = "Ready";
+
+                    videoSourcesSelect.value = bestSource.index;
+
+                    if (stopBtn.disabled || stopBtn.style.display === "none") {
+                        if (statusText.innerText === "Waiting for page..." || statusText.innerText === "Opening URL...") {
+                            statusText.innerText = "";
+                        }
                         startBtn.disabled = false;
+                        startBtn.style.display = "flex";
+                        if (sourceSelector) sourceSelector.style.display = "block";
+                        startBtn.classList.remove('pulse-selection');
                     }
                 } else {
-                    sourceSelector.style.display = "none";
-                    if (statusText.innerText !== "Recording" && statusText.innerText !== "Paused") {
-                        statusText.innerText = "No video found";
-                        startBtn.disabled = true;
+                    if (stopBtn.disabled || stopBtn.style.display === "none") {
+                        if (statusText.innerText !== "Opening URL...") {
+                            statusText.innerText = "No video detected";
+                        }
+                        startBtn.style.display = "none";
+                        if (sourceSelector) sourceSelector.style.display = "none";
                     }
                 }
             });
@@ -272,34 +451,52 @@ function loadSources() {
     });
 }
 
-// Check current state on popup open
+function startPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(() => {
+        // Only poll if we are NOT recording
+        chrome.storage.local.get(['recordingState'], (result) => {
+            const state = result.recordingState?.state;
+            if (state === "inactive" || !state) {
+                loadSources();
+            } else {
+                if (pollingInterval) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                }
+            }
+        });
+    }, 3000);
+}
+
+
 function restoreState() {
     chrome.storage.local.get(['recordingState'], (result) => {
         const stateData = result.recordingState;
         if (stateData && stateData.state !== "inactive") {
-            // First check if we are on the same tab where recording might be happening
-            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
                 const currentTab = tabs[0];
                 if (!currentTab) return;
 
                 if (stateData.tabId === currentTab.id) {
-                    // Pre-apply state from storage to avoid flickering or 00:00:00
                     applyStateToUI(stateData);
-                    
-                    // Then send message to confirm state with content script
-                    chrome.tabs.sendMessage(currentTab.id, {action: "getState"}, function(response) {
+                    chrome.tabs.sendMessage(currentTab.id, { action: "getState" }, function (response) {
                         if (chrome.runtime.lastError) {
-                            // Content script might have crashed or not ready, but storage says recording
+                            chrome.storage.local.set({ recordingState: { state: "inactive", startTime: 0 } });
+                            resetUI();
                             return;
                         }
                         if (response) {
                             applyStateToUI(response);
+                        } else {
+                            chrome.storage.local.set({ recordingState: { state: "inactive", startTime: 0 } });
+                            resetUI();
                         }
                     });
                 } else {
-                    // Recording is in another tab
-                    statusText.innerText = "Recording in another tab";
+                    statusText.innerText = "Check other tabs";
                     startBtn.disabled = true;
+                    startBtn.style.display = "none";
                 }
             });
         }
@@ -308,54 +505,73 @@ function restoreState() {
 
 function applyStateToUI(response) {
     if (!response || !response.state) return;
-    
+
     if (response.state === "recording") {
         if (response.startTime > 0) {
             startBtn.disabled = true;
+            startBtn.style.display = "none";
             stopBtn.disabled = false;
+            stopBtn.style.display = "flex";
             pauseBtn.style.display = "flex";
             resumeBtn.style.display = "none";
-            pipBtn.style.display = "flex";
-            statusText.innerText = "Recording";
+            statusText.innerText = "";
+            if (owlStatus) owlStatus.innerText = "Ullu is recording...";
+            if (owlImage) owlImage.style.display = "none";
+            if (owlEyelids) owlEyelids.style.display = "none";
+            if (ringTimer) ringTimer.style.display = "block";
+            if (owlLogoContainer) {
+                owlLogoContainer.classList.add('recording');
+                owlLogoContainer.classList.remove('paused');
+            }
+            if (urlInput) urlInput.parentElement.style.display = "none";
             startTimer(response.startTime, response.pausedDuration, false, 0);
         }
     } else if (response.state === "paused") {
         if (response.startTime > 0) {
             startBtn.disabled = true;
+            startBtn.style.display = "none";
             stopBtn.disabled = false;
+            stopBtn.style.display = "flex";
             pauseBtn.style.display = "none";
             resumeBtn.style.display = "flex";
-            pipBtn.style.display = "flex";
-            statusText.innerText = "Paused";
+            statusText.innerText = "";
+            if (owlStatus) owlStatus.innerText = "Recording paused...";
+            if (owlImage) owlImage.style.display = "none";
+            if (owlEyelids) owlEyelids.style.display = "none";
+            if (ringTimer) ringTimer.style.display = "block";
+            if (owlLogoContainer) {
+                owlLogoContainer.classList.add('paused');
+                owlLogoContainer.classList.remove('recording');
+            }
+            if (urlInput) urlInput.parentElement.style.display = "none";
             startTimer(response.startTime, response.pausedDuration, true, response.lastPauseTime);
         }
     } else if (response.state === "inactive") {
         if (response.startTime === 0 || !response.startTime) {
             resetUI();
         }
-    } else {
-        pipBtn.style.display = "flex";
     }
 }
 
-// Initial load
+
 loadLibrary();
 loadSources();
 restoreState();
+startPolling(); // New: Start polling on popup open
 
-// Refresh library when download completes
+
 chrome.downloads.onChanged.addListener((delta) => {
     if (delta.state && delta.state.current === 'complete') {
         loadLibrary();
     }
 });
 
-// Sync UI with storage changes (important for auto-pause during buffering)
+
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.recordingState) {
         const newState = changes.recordingState.newValue;
         if (newState) {
-            chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
                 if (tabs[0] && newState.tabId === tabs[0].id) {
                     applyStateToUI(newState);
                 }
@@ -363,3 +579,70 @@ chrome.storage.onChanged.addListener((changes, area) => {
         }
     }
 });
+
+
+function initCustomDropdowns() {
+    setupCustomDropdown('qualityDropdown', 'settingQuality', 'qualitySelectedText');
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.custom-dropdown')) {
+            document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('active'));
+        }
+    });
+}
+
+function setupCustomDropdown(containerId, selectId, textId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const trigger = container.querySelector('.custom-select-trigger');
+    const select = document.getElementById(selectId);
+    const textSpan = document.getElementById(textId);
+
+    trigger.addEventListener('click', () => {
+        document.querySelectorAll('.custom-dropdown').forEach(d => {
+            if (d !== container) d.classList.remove('active');
+        });
+        container.classList.toggle('active');
+    });
+
+    container.addEventListener('click', (e) => {
+        const option = e.target.closest('.custom-option');
+        if (option) {
+            const value = option.dataset.value;
+            const text = option.innerText;
+
+            textSpan.innerText = text;
+            select.value = value;
+
+            container.querySelectorAll('.custom-option').forEach(opt => opt.classList.remove('selected'));
+            option.classList.add('selected');
+            container.classList.remove('active');
+
+            select.dispatchEvent(new Event('change'));
+        }
+    });
+}
+
+function updateQualityDropdownUI(value) {
+    const container = document.getElementById('qualityDropdown');
+    const textSpan = document.getElementById('qualitySelectedText');
+    if (!container || !textSpan) return;
+    const options = container.querySelectorAll('.custom-option');
+
+    options.forEach(opt => {
+        if (opt.dataset.value === value) {
+            opt.classList.add('selected');
+            textSpan.innerText = opt.innerText;
+        } else {
+            opt.classList.remove('selected');
+        }
+    });
+}
+
+
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCustomDropdowns);
+} else {
+    initCustomDropdowns();
+}
